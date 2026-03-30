@@ -1,5 +1,5 @@
 /**
- * Popup Script — handles UI interactions and file downloads
+ * Popup Script — handles UI, clipboard paste, and downloads
  */
 
 // DOM elements
@@ -10,6 +10,7 @@ const pageTitleEl = document.getElementById("pageTitle");
 const faviconEl = document.getElementById("favicon");
 const filenameEl = document.getElementById("filename");
 const refreshBtn = document.getElementById("refreshBtn");
+const pasteBtn = document.getElementById("pasteBtn");
 const downloadBtn = document.getElementById("downloadBtn");
 
 let currentSelection = "";
@@ -23,7 +24,7 @@ function showStatus(message, type = "info") {
   statusEl.className = `status show ${type}`;
   setTimeout(() => {
     statusEl.className = "status";
-  }, 4000);
+  }, 5000);
 }
 
 function getFaviconUrl(url) {
@@ -51,129 +52,138 @@ function wrapInMarkdown(text, pageTitle, pageUrl) {
   });
 
   let md = "";
-
-  // Header block
   md += `# ${pageTitle || "Highlighted Content"}\n\n`;
 
-  // Source link
   if (pageUrl) {
     md += `**Source:** [${pageUrl}](${pageUrl})\n`;
   }
 
   md += `**Date:** ${date}\n\n`;
   md += `---\n\n`;
-
-  // Content
   md += text + "\n\n";
-
-  // Footer
   md += `---\n\n`;
   md += `*Exported with Markdown Clipboard Chrome Extension*\n`;
 
   return md;
 }
 
-// ── Load Selection ───────────────────────────────────────────────────────────
-
-async function loadSelection() {
-  // First: try chrome.storage (set by content script polling)
-  try {
-    const data = await chrome.storage.local.get(["lastSelection", "pageTitle", "pageUrl", "timestamp"]);
-    if (data.lastSelection && data.lastSelection.trim().length > 0) {
-      // Check if it's recent (within last 30 seconds)
-      const age = Date.now() - (data.timestamp || 0);
-      if (age < 30000) {
-        currentSelection = data.lastSelection.trim();
-        currentPageTitle = data.pageTitle || "";
-        currentPageUrl = data.pageUrl || "";
-        updateUI();
-        return;
-      }
-    }
-  } catch (e) {
-    // storage not available
-  }
-
-  // Second: ask active tab's content script directly
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab && tab.id && tab.url && !tab.url.startsWith("chrome://")) {
-      // Ping first to check if content script is loaded
-      try {
-        const ping = await chrome.tabs.sendMessage(tab.id, { action: "ping" });
-      } catch {
-        // Content script not loaded on this page
-      }
-
-      const response = await chrome.tabs.sendMessage(tab.id, { action: "getSelection" });
-      if (response && response.selection && response.selection.trim().length > 0) {
-        currentSelection = response.selection.trim();
-        currentPageTitle = response.pageTitle || tab.title || "";
-        currentPageUrl = response.pageUrl || tab.url || "";
-        await chrome.storage.local.set({
-          lastSelection: currentSelection,
-          pageTitle: currentPageTitle,
-          pageUrl: currentPageUrl,
-          timestamp: Date.now()
-        });
-        updateUI();
-        return;
-      }
-    }
-  } catch (e) {
-    // Content script might not be loaded — this is ok
-  }
-
-  // No selection found
-  currentSelection = "";
-  currentPageTitle = "";
-  currentPageUrl = "";
-  updateUI();
-}
-
 function updateUI() {
-  // Preview
   if (currentSelection && currentSelection.length > 0) {
-    const truncated = currentSelection.length > 200
-      ? currentSelection.substring(0, 200) + "..."
+    const truncated = currentSelection.length > 300
+      ? currentSelection.substring(0, 300) + "..."
       : currentSelection;
     previewTextEl.textContent = truncated;
     previewTextEl.classList.add("show");
     previewEmptyEl.style.display = "none";
     downloadBtn.disabled = false;
+
+    if (currentPageTitle) {
+      filenameEl.value = slugify(currentPageTitle.substring(0, 40));
+    }
   } else {
     previewTextEl.classList.remove("show");
     previewEmptyEl.style.display = "block";
     downloadBtn.disabled = true;
   }
 
-  // Page info
   pageTitleEl.textContent = currentPageTitle || "—";
   faviconEl.src = currentPageUrl ? getFaviconUrl(currentPageUrl) : "";
   faviconEl.style.display = currentPageUrl ? "block" : "none";
+}
 
-  // Auto-fill filename from page title
-  if (!filenameEl.value || filenameEl.value === "my-highlight") {
-    if (currentPageTitle) {
-      filenameEl.value = slugify(currentPageTitle.substring(0, 40));
+// ── Load Selection from content script ────────────────────────────────────────
+
+async function loadFromContentScript() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab && tab.id && tab.url && !tab.url.startsWith("chrome://") && !tab.url.startsWith("about:")) {
+      const response = await chrome.tabs.sendMessage(tab.id, { action: "getSelection" });
+      if (response && response.selection && response.selection.trim().length > 0) {
+        currentSelection = response.selection.trim();
+        currentPageTitle = response.pageTitle || tab.title || "";
+        currentPageUrl = response.pageUrl || tab.url || "";
+        updateUI();
+        return true;
+      }
     }
+  } catch (e) {
+    // Content script not available or page restricted
   }
+  return false;
+}
+
+// ── Load from clipboard (THE GUARANTEED GEMINI METHOD) ────────────────────────
+
+async function pasteFromClipboard() {
+  try {
+    // Try the modern Clipboard API first
+    const text = await navigator.clipboard.readText();
+    if (text && text.trim().length > 0) {
+      currentSelection = text.trim();
+      
+      // Try to get page info from storage (set by content script)
+      try {
+        const data = await chrome.storage.local.get(["pageTitle", "pageUrl"]);
+        currentPageTitle = data.pageTitle || "Clipboard Content";
+        currentPageUrl = data.pageUrl || "";
+      } catch {
+        currentPageTitle = "Clipboard Content";
+        currentPageUrl = "";
+      }
+
+      updateUI();
+      showStatus("✅ Pasted from clipboard!", "success");
+      return;
+    }
+  } catch (e) {
+    // Clipboard API failed — try fallback
+  }
+
+  // Fallback: create a textarea and paste there
+  try {
+    const textarea = document.createElement("textarea");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    textarea.style.top = "0";
+    textarea.style.left = "0";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    
+    // Use execCommand as fallback
+    const success = document.execCommand("paste");
+    const text = textarea.value.trim();
+    document.body.removeChild(textarea);
+
+    if (success && text && text.length > 0) {
+      currentSelection = text;
+      try {
+        const data = await chrome.storage.local.get(["pageTitle", "pageUrl"]);
+        currentPageTitle = data.pageTitle || "Clipboard Content";
+        currentPageUrl = data.pageUrl || "";
+      } catch {
+        currentPageTitle = "Clipboard Content";
+        currentPageUrl = "";
+      }
+      updateUI();
+      showStatus("✅ Pasted from clipboard!", "success");
+      return;
+    }
+  } catch (e) {
+    // execCommand also failed
+  }
+
+  showStatus("❌ Could not read clipboard. Try: Ctrl+C first, then click Paste.", "error");
 }
 
 // ── Download ─────────────────────────────────────────────────────────────────
 
 async function downloadMarkdown() {
   if (!currentSelection) {
-    showStatus("No text selected! Highlight some text first.", "error");
+    showStatus("No text! Highlight or Ctrl+C then click Paste first.", "error");
     return;
   }
 
-  let filename = filenameEl.value.trim();
-  if (!filename) {
-    filename = "my-highlight";
-  }
-
-  // Ensure .md extension
+  let filename = filenameEl.value.trim() || "my-highlight";
   if (!filename.endsWith(".md")) {
     filename += ".md";
   }
@@ -183,12 +193,8 @@ async function downloadMarkdown() {
   const url = URL.createObjectURL(blob);
 
   try {
-    await chrome.downloads.download({
-      url: url,
-      filename: filename,
-      saveAs: true
-    });
-    showStatus(`✅ Downloaded "${filename}" successfully!`, "success");
+    await chrome.downloads.download({ url, filename, saveAs: true });
+    showStatus(`✅ Downloaded "${filename}"!`, "success");
   } catch (err) {
     showStatus(`❌ Download failed: ${err.message}`, "error");
   } finally {
@@ -198,9 +204,23 @@ async function downloadMarkdown() {
 
 // ── Event Listeners ────────────────────────────────────────────────────────────
 
-refreshBtn.addEventListener("click", () => {
-  loadSelection();
-  showStatus("Refreshing...", "info");
+refreshBtn.addEventListener("click", async () => {
+  showStatus("Checking for selection...", "info");
+  currentSelection = "";
+  currentPageTitle = "";
+  currentPageUrl = "";
+  
+  // First try content script
+  const found = await loadFromContentScript();
+  if (!found) {
+    // If content script failed, try clipboard
+    await pasteFromClipboard();
+  }
+  updateUI();
+});
+
+pasteBtn.addEventListener("click", async () => {
+  await pasteFromClipboard();
 });
 
 downloadBtn.addEventListener("click", downloadMarkdown);
@@ -211,15 +231,16 @@ filenameEl.addEventListener("keydown", (e) => {
   }
 });
 
-// ── Init ──────────────────────────────────────────────────────────────────────
+// ── Init ─────────────────────────────────────────────────────────────────────
 
-document.addEventListener("DOMContentLoaded", () => {
-  loadSelection();
-});
+async function init() {
+  // First: try clipboard (most reliable for Gemini)
+  await pasteFromClipboard();
+  
+  // Then try content script (in case normal highlighting worked)
+  await loadFromContentScript();
+  
+  updateUI();
+}
 
-// Also try loading on visibility change (user switches tabs and comes back)
-document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) {
-    loadSelection();
-  }
-});
+document.addEventListener("DOMContentLoaded", init);

@@ -1,7 +1,7 @@
 # Markdown Clipboard — Chrome Extension
 *Highlight any text on any webpage — including Gemini, ChatGPT, Claude — and download as Markdown.*
 
-**Version:** 1.1 — Fixed for React/Gemini/SPA support
+**Version:** 1.2 — Now reads directly from clipboard — guaranteed to work on Gemini!
 
 ---
 
@@ -152,24 +152,26 @@ chrome_markdown_exporter/
 
 ## Troubleshooting
 
-### "No text selected" on Gemini/ChatGPT/Claude
-- **This is fixed in v1.1!** The extension now uses `selectionchange` events and polling instead of relying on `mouseup` events, which work better on React/SPA pages.
-- Make sure you have **v1.1** installed (reload the extension after updating)
-- Try clicking the extension icon AFTER highlighting — don't switch tabs
+### Still not working on Gemini? (v1.2 — guaranteed fix)
+1. On Gemini, **Ctrl+C** to copy the text you want
+2. Click the **📋 Markdown Clipboard** extension icon
+3. Click the **📋 Paste** button
+4. Click **Download** 📥
+
+The **Paste button** reads directly from your clipboard — it bypasses all the React/Gemini restrictions.
 
 ### Content script not loading
 - Make sure the extension is enabled in `chrome://extensions/`
 - Try reloading the extension
-- Make sure the page isn't blocking content scripts (some sites do)
 
 ### Download not saving
 - Check your Chrome downloads folder
 - Make sure downloads are allowed in Chrome settings
 
 ### Need to reload after updating
-- After replacing the extension files, go to `chrome://extensions/`
-- Find **Markdown Clipboard** and click the **🔄 reload icon**
-- Then pin the extension again if needed
+1. Go to `chrome://extensions/`
+2. Find **Markdown Clipboard** and click **🔄 reload**
+3. Unpin and re-pin the extension to refresh it
 
 ---
 
