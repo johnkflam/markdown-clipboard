@@ -1,12 +1,13 @@
 # Markdown Clipboard — Chrome Extension
+*Highlight any text on any webpage — including Gemini, ChatGPT, Claude — and download as Markdown.*
 
-Highlight any text on any webpage, convert it to Markdown, and download it to your local Drive.
+**Version:** 1.1 — Fixed for React/Gemini/SPA support
 
 ---
 
 ## Features
 
-- ✅ Highlight any text on any webpage
+- ✅ Highlight any text on any webpage (including **Gemini**, **ChatGPT**, **Claude**, **Notion**, etc.)
 - ✅ Converts to clean Markdown format
 - ✅ Auto-adds source URL and date
 - ✅ Clean preview before downloading
@@ -15,10 +16,7 @@ Highlight any text on any webpage, convert it to Markdown, and download it to yo
 - ✅ No account required
 - ✅ Works offline
 - ✅ Open source
-
----
-
-## Installation
+- 🔧 **Fixed:** Now works on React/SPA pages (Gemini, ChatGPT, Claude, etc.)
 
 ### Step 1: Download / Clone
 
@@ -154,10 +152,10 @@ chrome_markdown_exporter/
 
 ## Troubleshooting
 
-### "No text selected"
-- Make sure you've **highlighted text** on the page first
-- Click the extension icon **after** highlighting
-- If it still doesn't work, click **Refresh** 🔄 in the popup
+### "No text selected" on Gemini/ChatGPT/Claude
+- **This is fixed in v1.1!** The extension now uses `selectionchange` events and polling instead of relying on `mouseup` events, which work better on React/SPA pages.
+- Make sure you have **v1.1** installed (reload the extension after updating)
+- Try clicking the extension icon AFTER highlighting — don't switch tabs
 
 ### Content script not loading
 - Make sure the extension is enabled in `chrome://extensions/`
@@ -167,6 +165,11 @@ chrome_markdown_exporter/
 ### Download not saving
 - Check your Chrome downloads folder
 - Make sure downloads are allowed in Chrome settings
+
+### Need to reload after updating
+- After replacing the extension files, go to `chrome://extensions/`
+- Find **Markdown Clipboard** and click the **🔄 reload icon**
+- Then pin the extension again if needed
 
 ---
 

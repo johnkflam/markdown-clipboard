@@ -76,40 +76,52 @@ function wrapInMarkdown(text, pageTitle, pageUrl) {
 // ── Load Selection ───────────────────────────────────────────────────────────
 
 async function loadSelection() {
-  // First try chrome.storage (set by content script)
+  // First: try chrome.storage (set by content script polling)
   try {
-    const data = await chrome.storage.local.get(["lastSelection", "pageTitle", "pageUrl"]);
+    const data = await chrome.storage.local.get(["lastSelection", "pageTitle", "pageUrl", "timestamp"]);
     if (data.lastSelection && data.lastSelection.trim().length > 0) {
-      currentSelection = data.lastSelection.trim();
-      currentPageTitle = data.pageTitle || "";
-      currentPageUrl = data.pageUrl || "";
-      updateUI();
-      return;
+      // Check if it's recent (within last 30 seconds)
+      const age = Date.now() - (data.timestamp || 0);
+      if (age < 30000) {
+        currentSelection = data.lastSelection.trim();
+        currentPageTitle = data.pageTitle || "";
+        currentPageUrl = data.pageUrl || "";
+        updateUI();
+        return;
+      }
     }
   } catch (e) {
     // storage not available
   }
 
-  // Fallback: ask active tab's content script
+  // Second: ask active tab's content script directly
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab && tab.id) {
+    if (tab && tab.id && tab.url && !tab.url.startsWith("chrome://")) {
+      // Ping first to check if content script is loaded
+      try {
+        const ping = await chrome.tabs.sendMessage(tab.id, { action: "ping" });
+      } catch {
+        // Content script not loaded on this page
+      }
+
       const response = await chrome.tabs.sendMessage(tab.id, { action: "getSelection" });
       if (response && response.selection && response.selection.trim().length > 0) {
         currentSelection = response.selection.trim();
-        currentPageTitle = tab.title || "";
-        currentPageUrl = tab.url || "";
+        currentPageTitle = response.pageTitle || tab.title || "";
+        currentPageUrl = response.pageUrl || tab.url || "";
         await chrome.storage.local.set({
           lastSelection: currentSelection,
           pageTitle: currentPageTitle,
-          pageUrl: currentPageUrl
+          pageUrl: currentPageUrl,
+          timestamp: Date.now()
         });
         updateUI();
         return;
       }
     }
   } catch (e) {
-    // Content script might not be loaded — that's ok
+    // Content script might not be loaded — this is ok
   }
 
   // No selection found
@@ -152,7 +164,7 @@ function updateUI() {
 
 async function downloadMarkdown() {
   if (!currentSelection) {
-    showStatus("No text selected!", "error");
+    showStatus("No text selected! Highlight some text first.", "error");
     return;
   }
 
@@ -176,7 +188,7 @@ async function downloadMarkdown() {
       filename: filename,
       saveAs: true
     });
-    showStatus(`✅ Downloaded as "${filename}"`, "success");
+    showStatus(`✅ Downloaded "${filename}" successfully!`, "success");
   } catch (err) {
     showStatus(`❌ Download failed: ${err.message}`, "error");
   } finally {
@@ -188,18 +200,26 @@ async function downloadMarkdown() {
 
 refreshBtn.addEventListener("click", () => {
   loadSelection();
-  showStatus("Refreshing selection...", "info");
+  showStatus("Refreshing...", "info");
 });
 
 downloadBtn.addEventListener("click", downloadMarkdown);
 
-// Allow Enter key to download
 filenameEl.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !downloadBtn.disabled) {
     downloadMarkdown();
   }
 });
 
-// ── Init ───────────────────────────────────────────────────────────────────────
+// ── Init ──────────────────────────────────────────────────────────────────────
 
-document.addEventListener("DOMContentLoaded", loadSelection);
+document.addEventListener("DOMContentLoaded", () => {
+  loadSelection();
+});
+
+// Also try loading on visibility change (user switches tabs and comes back)
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) {
+    loadSelection();
+  }
+});

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Markdown Clipboard",
-  "version": "1.0",
+  "version": "1.1",
   "description": "Highlight any text, convert it to Markdown, and download it to your local Drive",
   "permissions": [
     "activeTab",
