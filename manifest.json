@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Markdown Clipboard",
+  "version": "1.0",
+  "description": "Highlight any text, convert it to Markdown, and download it to your local Drive",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "downloads"
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/content.js"]
+    }
+  ],
+  "background": {
+    "service_worker": "background/background.js"
+  }
+}
